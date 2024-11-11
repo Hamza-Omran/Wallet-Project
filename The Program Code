@@ -1,0 +1,733 @@
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <algorithm> // For std::transform
+#include <cctype> // For std::toupper
+#include <iomanip> // For formatting output
+#include <conio.h>
+
+using namespace std;
+
+string DBPath = "EntriesDB.txt";
+string Currency = "HUF";
+string CategoryArray[100];
+int CategoryArraySize = 4;
+int IDCount = 0;
+
+enum enEntryType { Income = 1, Expense = 2 };
+
+enum enMainMenuOptions {
+    Load_DB = 1, Show_Entries = 2, Add_Entry = 3, Edit_Entry = 4, Delete_Entry = 5, Category_Menu = 6, View_Summary = 7,
+    Time_Based_Report = 8, Save_DB = 9, Exit = 10
+};
+
+enum enCategoryMenu { Show_Categories = 1, Add_Category = 2, Edit_Category = 3, Delete_Category = 4, Back_To_Main_Menu = 5 };
+
+struct stDate {
+    int Year = 1900;
+    int Month = 1;
+    int Day = 1;
+};
+
+struct stEntry {
+    int ID = 0;
+    enEntryType Type;
+    stDate Date;
+    double Amount = 0;
+    string Category = "";
+};
+
+struct stCategorySummary {
+    string Category;
+    double Amount = 0;
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////
+vector<stEntry> vEntries;
+//predefined functions
+
+void ShowMainMenuOptions();
+void ShowCategoryMenu();
+
+string enEntryTypeToString(enEntryType Type) {
+    if (Type == enEntryType::Income)
+        return "Income";
+    else
+        return "Expense";
+}
+
+string ConvertDateStructureIntoString(stDate Date) {
+    return to_string(Date.Year) + "-" + to_string(Date.Month) + "-" + to_string(Date.Day);
+}
+
+string EntriesDataIntoLine(stEntry Entry, string delim = "#//#") {
+    return to_string(Entry.ID) + delim + (enEntryTypeToString(Entry.Type) + delim + Entry.Category + delim + to_string(Entry.Amount) + delim + ConvertDateStructureIntoString(Entry.Date));
+}
+
+string GetAllCategories(string delim = "#//#") {
+
+    string s1 = "";
+    for (int i = 0; i < CategoryArraySize - 1; i++) {
+        s1 += CategoryArray[i] + delim;
+    }
+    s1 += CategoryArray[CategoryArraySize - 1];
+    return s1;
+}
+
+string delim = "#//#";
+
+void Save() {
+
+    fstream myfile;
+    myfile.open(DBPath, ios::out);
+
+    if (myfile.is_open()) {
+        myfile << Currency << delim << to_string(CategoryArraySize) << delim << to_string(IDCount) << delim << GetAllCategories() << endl;
+        for (stEntry& Entry : vEntries) {
+            myfile << EntriesDataIntoLine(Entry) << endl;
+        }
+        myfile.close();
+    }
+}
+
+vector<string> WordsInString(string s1, string delim = "#//#") {
+    short pos = 0;
+    vector<string> vec = {};
+    string word;
+    short counter = 0;
+    while ((pos = s1.find(delim)) != string::npos) {
+        word = s1.substr(0, pos);
+        if (word != "") {
+            vec.push_back(word);
+        }
+        s1.erase(0, pos + delim.length());
+    }
+    if (s1 != "") {
+        vec.push_back(s1);
+    }
+    return vec;
+}
+
+enEntryType ConvertFromStringToEntryType(string Type) {
+    if (Type == "Income")
+        return enEntryType::Income;
+    else
+        return enEntryType::Expense;
+}
+
+stDate ConvertDateStringTostDate(string Date) {
+    stDate DateStructure;
+    vector<string> vDate = WordsInString(Date, "-");
+
+    DateStructure.Year = stoi(vDate[0]);
+    DateStructure.Month = stoi(vDate[1]);
+    DateStructure.Day = stoi(vDate[2]);
+
+    return DateStructure;
+}
+
+stEntry LineToEntryStructure(string EntryRecord) {
+
+    vector<string> Data = WordsInString(EntryRecord);
+    stEntry Entry;
+    Entry.ID = stoi(Data[0]);
+    Entry.Type = ConvertFromStringToEntryType(Data[1]);
+    Entry.Category = Data[2];
+    Entry.Amount = stod(Data[3]);
+    Entry.Date = ConvertDateStringTostDate(Data[4]);
+
+    return Entry;
+}
+
+void Initialize_Categories() {
+
+    CategoryArray[0] = "SALARY";
+    CategoryArray[1] = "SCHOLARSHIP";
+    CategoryArray[2] = "FOOD";
+    CategoryArray[3] = "TRAVEL";
+}
+
+void ReadFirstLine(string Entry) {
+    vector<string> Data = WordsInString(Entry);
+    Currency = Data[0];
+    CategoryArraySize = stoi(Data[1]);
+    IDCount = stoi(Data[2]);
+
+    for (int i = 0; i < CategoryArraySize && i < Data.size() - 3; i++) {
+        CategoryArray[i] = Data[i + 3];
+    }
+    if (CategoryArraySize == 0)
+        Initialize_Categories();
+}
+bool isFileEmpty(fstream& file) 
+{ 
+    return file.peek() == fstream::traits_type::eof(); 
+}
+
+vector<stEntry> DownloadFromFileToVector() {
+
+    fstream myfile;
+    myfile.open(DBPath, ios::in);
+
+    vector<stEntry> vTheEntries;
+
+    string Entry;
+    bool isFirstLine = true;
+        if (myfile.is_open()) {
+            
+            while (getline(myfile, Entry)) {
+                if (isFirstLine) {
+                    ReadFirstLine(Entry);
+                    isFirstLine = false;
+                }
+                else
+                    vTheEntries.push_back(LineToEntryStructure(Entry));
+            }
+            myfile.close();
+        }
+
+    return vTheEntries;
+}
+
+string toUpperCase(const string& input) {
+    string result = input;
+    transform(result.begin(), result.end(), result.begin(), ::toupper);
+    return result;
+}
+
+void AddCategory(string Category) {
+    CategoryArray[CategoryArraySize++] = toUpperCase(Category);
+}
+
+void DeleteCategory(string Category) {
+    Category = toUpperCase(Category);
+    for (int i = 0; i < CategoryArraySize; i++) {
+        if (Category == CategoryArray[i]) {
+            if (i != CategoryArraySize - 1){
+                CategoryArray[i] = CategoryArray[CategoryArraySize - 1];
+            CategoryArray[CategoryArraySize - 1] = "";
+            }
+            else
+                CategoryArray[i] = "";
+            CategoryArraySize--;
+            break;
+        }
+    }
+}
+
+void UpdateCategory(string Category,string NewValue) {
+    Category = toUpperCase(Category);
+    for (int i = 0; i < CategoryArraySize; i++) {
+        if (Category == CategoryArray[i]) {
+            CategoryArray[i] = NewValue;
+            break;
+        }
+    }
+}
+
+void AddEntry(stEntry Entry) {
+    
+    Entry.ID = ++IDCount;
+
+    vEntries.push_back(Entry);
+}
+
+void DeleteEntry(int ID) {
+    for (int i = 0; i < vEntries.size(); i++) {
+        if (vEntries[i].ID == ID) {
+            vEntries.erase(vEntries.begin() + i);
+            break;
+        }
+    }
+}
+
+void UpdateEntry(int ID, stEntry stNewEntry) {
+
+    for (int i = 0; i < vEntries.size(); i++) {
+        if (vEntries[i].ID == ID) {
+            vEntries[i] = stNewEntry;
+            vEntries[i].ID = ID;
+            break;
+        }
+    }
+}
+
+// this function works to get the sum of both income and expenses by sending the Entry Type to the funciton
+double GetTotalOfTheType(enEntryType Type, vector<stEntry> vTheEntries) {
+    double sum = 0;
+    for (int i = 0; i < vTheEntries.size(); i++) {
+        if (vTheEntries[i].Type == Type)
+            sum += vTheEntries[i].Amount;
+    }
+    return sum;
+}
+
+double GetAmountSpentInTheCategory(string Category, vector<stEntry> vTheEntries) {
+    double sum = 0;
+    for (int i = 0; i < vTheEntries.size(); i++) {
+        if (vTheEntries[i].Category == Category)
+            sum += vTheEntries[i].Amount;
+    }
+    return sum;
+}
+
+double GetOverAllBalances(vector<stEntry> vTheEntries) {
+    return GetTotalOfTheType(enEntryType::Income, vTheEntries) - GetTotalOfTheType(enEntryType::Expense, vTheEntries);
+}
+
+vector<stCategorySummary> GetAllCategoriesSummary(vector<stEntry> vTheEntries) {
+
+    vector<stCategorySummary> CategoriesSummary;
+    stCategorySummary CategorySummary;
+
+    for (int i = 0; i < CategoryArraySize; i++) {
+        CategorySummary.Category = CategoryArray[i];
+        CategorySummary.Amount = GetAmountSpentInTheCategory(CategoryArray[i], vTheEntries);
+        CategoriesSummary.push_back(CategorySummary);
+    }
+    return CategoriesSummary;
+}
+
+bool IsDate1BeforeDate2(stDate Date1, stDate Date2)
+{
+    return  (Date1.Year < Date2.Year) ? true : ((Date1.Year == Date2.Year) ? (Date1.Month < Date2.Month ? true : (Date1.Month == Date2.Month ? Date1.Day < Date2.Day : false)) : false);
+}
+
+bool IsDate1EqualDate2(stDate Date1, stDate Date2)
+{
+    return  (Date1.Year == Date2.Year) ? ((Date1.Month == Date2.Month) ? ((Date1.Day == Date2.Day) ? true : false) : false) : false;
+}
+
+bool IsDateBetweenDate1AndDate2(stDate Date0, stDate Date1, stDate Date2) {
+    
+    return IsDate1BeforeDate2(Date0, Date2) && IsDate1BeforeDate2(Date1, Date0) || IsDate1EqualDate2(Date0, Date1) || IsDate1EqualDate2(Date0, Date2);
+}
+
+vector<stEntry> GetAllEntriesBetweenDate1AndDate2(stDate Date1, stDate Date2) {
+    
+    vector<stEntry> vEntriesBetweenDate1AndDate2;
+
+    for (int i = 0; i < vEntries.size(); i++) {
+        if (IsDateBetweenDate1AndDate2(vEntries[i].Date, Date1, Date2)) {
+            vEntriesBetweenDate1AndDate2.push_back(vEntries[i]);
+        }
+    }
+    return vEntriesBetweenDate1AndDate2;
+}
+
+stEntry GetLargestExpense(vector<stEntry> vTheEntries) {
+
+    int index = 0;
+    double max = 0;
+
+    for (int i = 0; i < vTheEntries.size(); i++) {
+        if (vTheEntries[i].Type == enEntryType::Expense) {
+            if (vTheEntries[i].Amount > max) {
+                max = vTheEntries[i].Amount;
+                index = i;
+            }
+        }
+    }
+    return vTheEntries[index];
+}
+
+void ReadDBPath() {
+
+    string s1;
+    cout << "Do you have a File (DB) want to use? (y/n)? ";
+    cin >> s1;
+    if (s1 == "y" || s1 == "Y") {
+        cout << "Enter the full path of the file: ";
+        cin.ignore(); // Clear the input buffer
+        getline(cin, DBPath);
+        vEntries = DownloadFromFileToVector();
+        cout << "\nThe New File (DB) with the path ( " << DBPath << " ) Has Been Read Successfully :-)" << endl;
+    }
+    else {
+        cout << "A New File (DB) Will Be Created In The Same Path Of The Project If Already Does Not Exist." << endl;
+        vEntries = DownloadFromFileToVector();
+        
+    }
+    cout << "Do you want to enter currency the existed one? (y/n)? ";
+    cin >> s1;
+    if (s1 == "y" || s1 == "Y") {
+        cout << "Enter the currency you want to use :-) ";
+        cin.ignore(); // Clear the input buffer
+        getline(cin, Currency);
+    }
+}
+
+template <typename T> static bool IsNumberBetween(T Number, T From, T To)
+{
+    if (Number >= From && Number <= To)
+        return true;
+    else
+        return false;
+}
+
+template <typename T> static T ReadNumber(string ErrorMessage = "Invalid Number, Enter again\n")
+{
+    T Number;
+    while (!(cin >> Number)) {
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << ErrorMessage;
+    }
+    return Number;
+}
+
+template <typename T> static T ReadNumberBetween(T From, T To, string ErrorMessage = "Number is not within range, Enter again:\n")
+{
+    T Number = ReadNumber<int>();
+
+    while (!IsNumberBetween(Number, From, To))
+    {
+        cout << ErrorMessage;
+        Number = ReadNumber<int>();
+    }
+    return Number;
+}
+
+void DrawScreenHeader(string Title, string SubTitle = "") {
+    cout << "\t\t\t\t______________________________________";
+    cout << "\n\n\t\t\t\t\t  " << Title;
+    if (SubTitle != "")
+    {
+        cout << "\n\t\t\t\t\t  " << SubTitle;
+    }
+    cout << "\n\t\t\t\t______________________________________\n\n";
+
+}
+
+void DisplayMainMenuOptions() {
+
+    cout << setw(30) << "" << "1. Load Database" << endl;
+    cout << setw(30) << "" << "2. Show Entries" << endl;
+    cout << setw(30) << "" << "3. Add Entry (Income / Expense)" << endl;
+    cout << setw(30) << "" << "4. Edit Entry" << endl;
+    cout << setw(30) << "" << "5. Delete Entry" << endl; 
+    cout << setw(30) << "" << "6. Category Menu" << endl;
+    cout << setw(30) << "" << "7. View Summary (Total Income, Total Expenses, Balance)" << endl;
+    cout << setw(30) << "" << "8. Generate Time-Based Report" << endl;
+    cout << setw(30) << "" << "9. Save Database" << endl; 
+    cout << setw(30) << "" << "10. Exit" << endl;
+}
+
+void BackToMainMenu() {
+    cout << "\nPress Any Key To Go Back To Main Menu... ";
+    _getch(); // Wait for a key press without displaying any message
+    ShowMainMenuOptions();
+    system("cls");
+}
+
+void PrintCategories() {
+    cout << "{ ";
+    for (int i = 0; i < CategoryArraySize - 1; i++) {
+        cout << CategoryArray[i] << ", ";
+    }
+    cout << CategoryArray[CategoryArraySize - 1] << " }" << endl;
+}
+
+bool IsCategoryExist(string Category) {
+    for (int i = 0; i < CategoryArraySize; i++) {
+        if (CategoryArray[i] == Category)
+            return true;
+    }
+    return false;
+}
+
+string ReadCategoryAndValidate() {
+    string s1;
+    cin >> s1;
+    s1 = toUpperCase(s1);
+    bool flag = !IsCategoryExist(s1);
+    while (flag) {
+        cout << "The Category You Have Entered Does Not Exist" << endl;
+        cin >> s1;
+        s1 = toUpperCase(s1);
+        flag = !IsCategoryExist(s1);
+    }
+    return s1;
+}
+
+stEntry ReadEntry() {
+
+    stEntry Entry;
+    string s1;
+    
+    cout << "Enter Entry Type (1 for INCOME, 2 for EXPENSE): ";
+    Entry.Type = (enEntryType) ReadNumberBetween(1, 2, "Enter Entry Type (1 for INCOME, 2 for EXPENSE): ");
+    cout << "Enter Category From The Following Categories: ";
+    PrintCategories();
+    Entry.Category = ReadCategoryAndValidate();
+    cout << "Enter Amount: ";
+    Entry.Amount = ReadNumber<double>();
+    cout << "Enter Date (YYYY-MM-DD): ";
+    cin >> s1;
+
+    try {
+        Entry.Date = ConvertDateStringTostDate(s1);
+    }
+    catch (exception& e) {
+        cout << "The Format You Have Entered Is Wrong" << endl;
+    }
+    return Entry;
+}
+
+int Read_ID() {
+    int id;
+    cout << "Enter the ID of the Entry You Want To Edit? ";
+    id = ReadNumberBetween<int>(1, IDCount, "The ID does not exist, Enter Another ID :-) ");
+    return id;
+}
+
+void EditEntry() {
+    int id = Read_ID();
+    DrawScreenHeader("Enter The Entry New Data: ");
+    UpdateEntry(id, ReadEntry());
+}
+
+string ReadCategory() {
+    string s1;
+    cout << "Enter the category Name: ";
+    cin >> s1;
+
+    return toUpperCase(s1);
+}
+
+void PrintCategorySummary(vector<stCategorySummary>& vCategorySummary) { 
+    // Print the header 
+    cout << left << setw(20) << "Category" << setw(15) << "Amount" << endl;
+    cout << string(35, '-') << endl;
+    // Print a divider line 
+    // // Print the category summaries 
+    for (int i = 0; i < vCategorySummary.size(); i++) {
+        cout << left << setw(20) << vCategorySummary[i].Category << setw(15) << vCategorySummary[i].Amount << endl; 
+    }
+}
+
+void ViewSummaryScreen() {
+    cout << left << setw(20) << "The Total Sum Of All Incomes: " << setw(15) << GetTotalOfTheType(enEntryType::Income, vEntries) << endl; 
+    cout << left << setw(20) << "The Total Sum Of All Expense: " << setw(15) << GetTotalOfTheType(enEntryType::Expense, vEntries) << endl;
+    stEntry Entry = GetLargestExpense(vEntries);
+    cout << "\nThe Category You Spend The Most is: " << Entry.Category << " And The Value You Spend in it is: " << Entry.Amount << endl << endl;
+    vector<stCategorySummary> vCategorySummary = GetAllCategoriesSummary(vEntries);
+    PrintCategorySummary(vCategorySummary);
+
+}
+
+stDate Read_Date() {
+
+    stDate Date;
+    string s1;
+    cout << "Enter Date (YYYY-MM-DD): ";
+    cin >> s1;
+
+    try {
+        Date = ConvertDateStringTostDate(s1);
+    }
+    catch (exception& e) {
+        cout << "The Format You Have Entered Is Wrong" << endl;
+    }
+    return Date;
+}
+
+void PrintTableHeader() {
+    int padding = 12;
+    cout << setw(padding) << "" << left << setw(10) << "Entry ID" << setw(15) << "Type" << setw(20) << "Category" << setw(15) << "Amount" << setw(15) << "Date" << endl;
+    cout << setw(padding) << string(75, '-') << endl;
+} 
+// Function to print an entry in the table
+void PrintEntryLine(const stEntry& Entry) { 
+    const int consoleWidth = 100; // Adjust to your console width 
+    // Create a string stream to build the output 
+    stringstream ss; 
+    string s2 = to_string(Entry.Amount) + " " + Currency + " ";
+    // Construct the output with manual padding 
+    ss << left << setw(10) << Entry.ID << setw(15) << enEntryTypeToString(Entry.Type) << setw(20) << Entry.Category << setw(25) << s2 << setw(25) << ConvertDateStructureIntoString(Entry.Date);
+    string output = ss.str();
+    int padding = (consoleWidth - output.length()) / 2;
+    cout << string(padding, ' ') << output << endl;
+}
+
+void Print_All_Entries(vector<stEntry> EntriesWithinPeriod) {
+
+    PrintTableHeader();
+    for (int i = 0; i < EntriesWithinPeriod.size(); i++) {
+        PrintEntryLine(EntriesWithinPeriod[i]);
+    }
+}
+
+void TimeBasedReport() {
+    
+    stDate Date1, Date2;
+
+    cout << "Enter The Start Date Of The Period: " << endl;
+    Date1 = Read_Date();
+
+    cout << "Enter The End Date Of The Period: " << endl;
+    Date2 = Read_Date();
+
+    cout << endl;
+
+    vector<stEntry> EntriesWithinPeriod = GetAllEntriesBetweenDate1AndDate2(Date1, Date2);
+
+    Print_All_Entries(EntriesWithinPeriod);
+
+}
+
+void BackToCategoryMenu() {
+    cout << "\nPress Any Key To Go Back To Category Menu... ";
+    _getch(); // Wait for a key press without displaying any message
+    ShowCategoryMenu();
+    system("cls");
+}
+
+void DisplayCategoryOptions() {
+    cout << setw(30) << "" << "1. Show Categories" << endl;
+    cout << setw(30) << "" << "2. Add Category" << endl;
+    cout << setw(30) << "" << "3. Edit Category" << endl;
+    cout << setw(30) << "" << "4. Delete Category" << endl;
+    cout << setw(30) << "" << "5. Back To Main Menu" << endl;
+}
+
+void EditCategory() {
+    string s1 = ReadCategory();
+
+    string s2;
+    cout << "Enter the new category Name: ";
+    cin >> s2;
+
+    UpdateCategory(s1, s2);
+}
+
+void ShowCategoryMenu() {
+    
+    system("cls");
+
+    DrawScreenHeader("Category Menu Screen");
+    DisplayCategoryOptions();
+    cout << "Choose Option From 1 To 5: ";
+    int MenuOption = ReadNumberBetween(1, 5, "the Number does not meet an option :-(\n try again from 1 to 5: ");
+
+    switch ((enCategoryMenu)MenuOption) {
+    case(enCategoryMenu::Show_Categories):
+        system("cls");
+        DrawScreenHeader("Show Categories Screen");
+        PrintCategories();
+        BackToCategoryMenu();
+        break;
+    case(enCategoryMenu::Add_Category):
+        system("cls");
+        DrawScreenHeader("Add Category Screen");
+        AddCategory(ReadCategory());
+        BackToCategoryMenu();
+        break;
+    case(enCategoryMenu::Edit_Category):
+        system("cls");
+        DrawScreenHeader("Edit Category Screen");
+        EditCategory();
+        BackToCategoryMenu();
+        break;
+    case(enCategoryMenu::Delete_Category):
+        system("cls");
+        DrawScreenHeader("Delete Category Screen");
+        DeleteCategory(ReadCategory());
+        BackToCategoryMenu();
+        break;
+    case(enCategoryMenu::Back_To_Main_Menu):
+        BackToMainMenu();
+        break;
+    }
+}
+
+void ShowMainMenuOptions() {
+
+    system("cls");
+
+    DrawScreenHeader("Main Menu Options");
+    DisplayMainMenuOptions();
+    cout << "Choose Option From 1 To 10: ";
+    int MenuOption = ReadNumberBetween(1, 10, "the Number does not meet an option :-(\n try again from 1 to 10: ");
+
+    switch ((enMainMenuOptions)MenuOption) {
+
+    case(enMainMenuOptions::Load_DB):
+        system("cls");
+        DrawScreenHeader("Read File (DB) Screen");
+        Save();
+        ReadDBPath();
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Show_Entries):
+        system("cls");
+        DrawScreenHeader("Show Entries Screen");
+        Print_All_Entries(vEntries);
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Add_Entry):
+        system("cls");
+        DrawScreenHeader("Add Entry Screen");
+        AddEntry(ReadEntry());
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Edit_Entry):
+        system("cls");
+        DrawScreenHeader("Edit Entry Screen");
+        EditEntry();
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Delete_Entry):
+        system("cls");
+        DrawScreenHeader("Delete Entry Screen");
+        DeleteEntry(Read_ID());
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Category_Menu):
+        system("cls");
+        ShowCategoryMenu();
+        // we have already called BackToMainMenu in the ShowCategoryMenu function
+        break;
+    case(enMainMenuOptions::View_Summary):
+        system("cls");
+        DrawScreenHeader("View Summary Screen");
+        ViewSummaryScreen();
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Time_Based_Report):
+        system("cls");
+        DrawScreenHeader("Time Based Report Screen");
+        TimeBasedReport();
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Save_DB):
+        system("cls");
+        DrawScreenHeader("Save DB Screen");
+        Save();
+        cout << "The DB has been saved successfully :-) ";
+        BackToMainMenu();
+        break;
+    case(enMainMenuOptions::Exit):
+        Save();
+        system("pause");
+        break;
+    }
+}
+
+void Start() {
+    
+    Initialize_Categories();
+    ReadDBPath();
+
+    ShowMainMenuOptions();
+}
+
+int main() {
+    atexit(Save);
+    Start();
+
+
+    return 0;
+}
