@@ -1,0 +1,830 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+/*
+   Macro Constants (#define): Preprocessor directives: #define is used to define constants or
+   macros that are replaced by the preprocessor before the program is compiled.
+*/
+#define MAX_ENTRIES 1000
+#define MAX_CATEGORIES 100
+#define MAX_CATEGORY_NAME 50
+#define DELIM "#//#"
+
+//define the enums for making options contained and easy access and to reduce errors
+typedef enum { Income = 1, Expense = 2 } EntryType;
+typedef enum { Load_DB = 1, Show_Entries = 2, Add_Entry = 3, Edit_Entry = 4, Delete_Entry = 5, Category_Menu = 6, View_Summary = 7, Time_Based_Report = 8, Save_DB = 9, Exit = 10 } enMainMenuOptions;
+typedef enum { Show_Categories = 1, Add_Category = 2, Edit_Category = 3, Delete_Category = 4, Back_To_Main_Menu = 5 } enCategoryMenu;
+
+//define data structure we will use over the program
+typedef struct { int Year; int Month; int Day; } stDate;
+typedef struct { int ID; EntryType Type; stDate Date; double Amount; char Category[100]; } stEntry;
+typedef struct { char* Category; double Amount; } stCategorySummary;
+
+// the array we will use to contain records(entries)
+stEntry* vEntries = NULL;
+int entryCount = 0;
+
+// define the variables we will use over all the program
+char DBPath[] = "EntriesDB.txt";
+char Currency[10] = "HUF";
+char CategoryArray[MAX_CATEGORIES][MAX_CATEGORY_NAME];
+int CategoryArraySize = 0;
+int IDCount = 0;
+
+// define the declaration of functions because we will call them before even writing them
+void ShowMainMenuOptions();
+void ShowCategoryMenu();
+void ensureTxtExtension(char *path);
+
+void Initialize_Categories() {
+
+    strcpy(CategoryArray[0], "SALARY");
+    strcpy(CategoryArray[1], "SCHOLARSHIP");
+    strcpy(CategoryArray[2], "FOOD");
+    strcpy(CategoryArray[3], "TRAVEL");
+    CategoryArraySize = 4;
+}
+
+void Save() {
+
+    FILE *file = fopen(DBPath, "w");// we used w for write and it means write r means read
+
+    if (file == NULL) {
+        printf("Error opening file");
+        return;
+    }
+
+    fprintf(file, "%s%s%d%s%d", Currency, DELIM, CategoryArraySize, DELIM, IDCount);
+
+    for (int i = 0; i < CategoryArraySize; i++)
+        fprintf(file, "%s%s%s", DELIM, CategoryArray[i], (i == CategoryArraySize - 1) ? "\n" : "");
+
+    for (int i = 0; i < entryCount; i++) {
+
+            stEntry *e = &vEntries[i];
+            fprintf(file, "%d%s%s%s%s%s%.6f%s%04d-%02d-%02d\n", e->ID, DELIM, e->Type == Income ? "Income" : "Expense", DELIM, e->Category, DELIM, e->Amount, DELIM, e->Date.Year, e->Date.Month, e->Date.Day);
+    }
+    fclose(file);
+}
+
+void ReadFirstLine(char *line) {//this is used to read only the first line in the path of file
+
+    line[strcspn(line, "\n")] = 0;
+
+    char *token = strtok(line, DELIM);
+
+    strcpy(Currency, token);
+
+    token = strtok(NULL, DELIM);
+    CategoryArraySize = atoi(token);
+
+    token = strtok(NULL, DELIM);
+    IDCount = atoi(token);
+
+    for (int i = 0; i < CategoryArraySize; i++) {
+
+        token = strtok(NULL, DELIM);
+        strcpy(CategoryArray[i], token);
+    }
+}
+
+void AllocateMemoryForvEntries(){
+
+    vEntries = (stEntry *)malloc(MAX_ENTRIES * sizeof(stEntry));
+
+    if (vEntries == NULL) {
+
+            perror("Failed to allocate memory for entries");
+            return;
+    }
+}
+
+void Load() {
+
+    FILE *file = fopen(DBPath, "r");
+    if (file == NULL) {
+        file = fopen(DBPath, "w");
+
+        while(file == NULL) {//won't exit till file is written right
+            perror("Error creating file\n");
+            printf("%s","\nEnter A correct Full Path!!! : ");
+            scanf("%s",DBPath);
+            ensureTxtExtension(DBPath);//will make the path at end .txt if it is not
+            return;
+        }
+
+        fclose(file);   //we close the program after finishing for data intgreity and resource management
+
+        file = fopen(DBPath, "r");
+        if (file == NULL) {
+            perror("Error reopening file");
+            return;
+        }
+    }
+
+    char line[256];
+
+    if (fgets(line, sizeof(line), file))
+        ReadFirstLine(line);  //we read the first line in different way since it contain the variable we will use over the program and because it is the only different line
+
+    while (fgets(line, sizeof(line), file)) {
+
+        stEntry entry;
+
+        char type[100];
+        line[strcspn(line, "\r\n")] = 0;
+        int count = sscanf(line, "%d" DELIM "%9[^#]" DELIM "%49[^#]" DELIM "%lf" DELIM "%d-%d-%d", &entry.ID, type, entry.Category, &entry.Amount, &entry.Date.Year, &entry.Date.Month, &entry.Date.Day);
+
+        if (count == 7) {
+            entry.Type = (strcmp(type, "Income") == 0) ? Income : Expense;
+
+            if (entryCount < MAX_ENTRIES)
+                vEntries[entryCount++] = entry;
+            else
+                printf("Maximum entries reached! Cannot load more entries.\n");
+        }
+        else
+            printf("Error parsing line: %s\n", line);
+        }
+    fclose(file);
+}
+
+void AddEntry(stEntry entry) {
+
+    if (entryCount < MAX_ENTRIES) {
+
+        entry.ID = ++IDCount;//increase id count by one before executing the line
+        vEntries[entryCount++] = entry;//increase array size by one
+    }
+    else
+        printf("Maximum entries reached! Cannot add more entries.\n");
+}
+
+void DeleteEntry(int ID) {
+
+    for (int i = 0; i < entryCount; ++i)
+        if (vEntries[i].ID == ID) {
+
+            memmove(&vEntries[i], &vEntries[i + 1], (entryCount - i - 1) * sizeof(stEntry));
+            --entryCount;// reduce array size by one
+            printf("%s","The Category Deleted Successfully!");
+            return;
+        }
+    printf("%s","The Category Does Not Exist!");
+}
+
+double GetTotalOfTheType(EntryType type, stEntry* vEntries2, int entryCount2) {
+
+    double sum = 0;
+
+    for (int i = 0; i < entryCount2; ++i)
+        sum += (vEntries2[i].Type == type) * vEntries2[i].Amount;
+
+    return sum;
+}
+
+void PrintNetBalance(stEntry* vEntries2, int entryCount2) {
+
+     double x = (GetTotalOfTheType(Income,vEntries2,entryCount2) - GetTotalOfTheType(Expense,vEntries2,entryCount2));
+
+     if (x>=0)
+        printf("%s%.2lf%s","The Net balance is: ",fabs(x) ," And It is Positive!");
+     else
+        printf("%s%.2lf%s","The Net balance is: ",fabs(x) ," And It is Negative!");
+}
+
+int DeleteCategory(const char *category) {
+
+    for (int i = 0; i < CategoryArraySize; ++i)
+        if (strcmp(CategoryArray[i], category) == 0) {
+
+            memmove(&CategoryArray[i], &CategoryArray[i + 1], (CategoryArraySize - i - 1) * sizeof(char *));
+            --CategoryArraySize;
+            return 1;
+        }
+
+        return 0;
+    }
+
+int hasTxtExtension(const char *filename) {
+
+    size_t len = strlen(filename);
+    return (int)(len > 4 && strcmp(filename + len - 4, ".txt") == 0);
+}
+
+void ensureTxtExtension(char *path) {
+
+    if (!hasTxtExtension(path)) strcat(path, ".txt");
+}
+
+void ReadYesOrNo(){
+
+    char s1[100];
+    printf("Do you have a File (DB) want to use? (yes/no)? ");
+    scanf("%s", s1);
+    toUpperCase(s1);
+
+    int flag=1;
+    while(flag){
+
+    if (strcmp(s1,"YES")==0) {
+
+        printf("Enter the full path of the file: ");
+        scanf("%s", DBPath);
+        ensureTxtExtension(DBPath);
+        flag=0;
+    }
+     else if (strcmp(s1,"NO")==0){
+        printf("A New File (DB) Will Be Created In The Same Path Of The Project If Already Does Not Exist.\n");
+        flag=0;
+     }
+     else{
+        printf("%s", "you must enter either yes or no, Do you have a File (DB) want to use? (yes/no)? ");
+        scanf("%s", s1);
+        toUpperCase(s1);
+     }
+    }
+}
+
+void ReadDBPath() {
+
+    if(entryCount>0) {
+
+        Save(); // before we start the program it will save the previous data if it is already read or there is data
+        printf("%s", "\nThe Current File Of The Program Data Has Been Saved!\n\n");
+
+    }
+
+    Initialize_Categories();    // to initialize categories with default values if not existed
+    strcpy(DBPath, "EntriesDB.txt");
+
+    ReadYesOrNo(); //to check if the input is yes or no if not read it again
+
+    //make the vEntries and entryCount empty
+    vEntries = NULL;
+    entryCount = 0;
+    AllocateMemoryForvEntries(); //to allocate or make specify memory for the array called vEntries which will contain the entries
+
+    Load(); // in both cases it will call this function and use the DBPath which have changed or have not according to the previous code
+
+    printf("\nThe New File (DB) with the path ( %s ) Has Been Read Successfully :-)\n", DBPath);
+
+    // this code is for making sure the enter either no or yes not any thing else
+    int flag=1;
+    char s1[100];
+    do {
+            printf("Do you want to enter currency rather than the existed one? (yes/no)? ");
+            scanf("%s", s1);
+            toUpperCase(s1);
+        if (strcmp(s1,"YES")==0) {
+
+            printf("Enter the currency you want to use :-) ");
+            scanf("%3s", Currency);
+            toUpperCase(Currency);
+            flag=0;
+        }
+        else if(strcmp(s1,"NO")==0)
+            flag=0;
+        else
+            printf("%s", "You Must Enter Either Yes Or No!!\n");
+    }while(flag);
+}
+
+int IsNumberBetween(int Number, int From, int To) {
+    return (Number >= From && Number <= To);
+}
+
+int ReadNumber(const char *Message) {
+
+    int Number;
+
+    // won't get out till we read number not a string or char or any other symbol
+    while (scanf("%d", &Number) != 1) {
+
+        scanf("%*s");
+        /*
+        The format specifier "%*s" in scanf tells it to read a string from the input but discard it,
+        meaning it reads and ignores any string input. The * symbol is a "suppress" flag
+        that prevents scanf from assigning the input to any variable.
+        */
+        printf("%s", Message);
+    }
+
+    return Number;
+}
+
+int ReadNumberBetween(int From, int To, const char *ErrorMessage,char *msg) {
+
+    printf("%s", ErrorMessage);
+    int Number = ReadNumber("Invalid Number, Enter again:\n");
+
+    // won't get out till we read number and this number is in the range we want
+    while (!IsNumberBetween(Number, From, To)){
+
+        printf("%s", msg);
+        Number = ReadNumber("Invalid Number, Enter again:\n");
+    }
+
+    return Number;
+}
+
+void DrawScreenHeader(const char *Title) {
+        printf("\t\t\t\t______________________________________\n\n\t\t\t\t\t  %s\n\t\t\t\t______________________________________\n\n", Title);
+
+}
+
+void DisplayMainMenuOptions() {
+    printf("%30s1. Load Database\n%30s2. Show Entries\n%30s3. Add Entry (Income / Expense)\n%30s4. Edit Entry\n%30s5. Delete Entry\n%30s6. Category Menu\n%30s7. View Summary (Total Income, Total Expenses, Balance)\n%30s8. Generate Time-Based Report\n%30s9. Save Database\n%30s10. Exit\n", "", "", "", "", "", "", "", "", "", "");
+}
+
+void BackToMainMenu() {
+    printf("\nPress Enter to go back to the main menu...");
+    while(getchar()!='\n');
+    getchar();
+    ShowMainMenuOptions();
+}
+
+void PrintCategories() {
+    printf("{ ");
+
+    for (int i = 0; i < CategoryArraySize; ++i)
+        printf("%s%s", CategoryArray[i], i == CategoryArraySize - 1 ? " }\n" : ", ");
+}
+
+int IsCategoryExist(const char *Category) {
+
+    for (int i = 0; i < CategoryArraySize; i++)
+        if(strcmp(CategoryArray[i], Category) == 0) return 1;
+
+    return 0;
+}
+
+char* ReadCategoryAndValidate() {  //make sure category is in the added categories
+
+    static char s1[MAX_CATEGORY_NAME];
+
+    while (1) {
+        if (scanf("%49s", s1) != 1) {
+            printf("Error reading input.\n");
+            while (getchar() != '\n');
+            continue;}
+
+        while (getchar() != '\n');  // clean buffer to read with cleaned buffer since buffer if it is not cleaned may cause problem
+
+        for (int i = 0; s1[i]; i++)
+            s1[i] = toupper(s1[i]);
+
+        if (IsCategoryExist(s1))
+            break;
+        else//if not found category then print not exist
+            printf("The Category You Have Entered Does Not Exist\n");
+        }
+
+    return s1;
+}
+
+char* ReadCategory(char * message) {
+    char* category = (char*)malloc(50 * sizeof(char));
+    printf(message);
+    scanf("%49s", category);
+    toUpperCase(category);
+
+    return category;
+}
+
+void AddCategory(const char *category) {
+    if (CategoryArraySize < 1000) {
+
+    strcpy(CategoryArray[CategoryArraySize++], category);
+    printf("The Category Added Successfully!\n");
+    }
+    else
+        printf("Maximum categories reached! Cannot add more categories.\n");
+}
+
+int isValidDateFormat(const char* date) {
+
+    int year, month, day, maxDays = 31;// by default maxdays is 31 if not edited
+    return (sscanf(date, "%d-%d-%d", &year, &month, &day) != 3 || month < 1 || month > 12) ? 0 : (month == 2 ? (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) ? (day >= 1 && day <= 29) : (day >= 1 && day <= 28)) : (month == 4 || month == 6 || month == 9 || month == 11 ? (day >= 1 && day <= 30) : (day >= 1 && day <= 31)));
+}
+
+stEntry ReadEntry() {
+
+        stEntry entry;  // we will fill data into this variable
+        char s1[11];
+        entry.Type = (EntryType) ReadNumberBetween(1, 2, "Enter Entry Type (1 for INCOME, 2 for EXPENSE): ","Try Again (1 for INCOME, 2 for EXPENSE): ");
+        printf("");
+        int choice=ReadNumberBetween(1, 2, "Choose From The Existed Categories Or Add New One (1 or 2)","Try Again (1 for Choosing, 2 for Add New One): ");
+
+        if(choice == 1){
+
+            printf("Enter Category From The Following Categories: ");
+            PrintCategories();
+            strcpy(entry.Category, ReadCategoryAndValidate());
+        } else{
+
+            strcpy(entry.Category,ReadCategory("Enter Category Name: "));
+            toUpperCase(entry.Category);
+            AddCategory(entry.Category);
+        }
+
+        char message[50] = "Enter Amount In ";
+        strcat(message, Currency);
+        strcat(message, ": ");
+        entry.Amount = ReadNumberBetween(0, 99999999999, message, "Invalid Amount, Enter again:\n"); // we send 99999999999 to make sure there is no limit
+
+        do {
+
+            printf("Enter Date (YYYY-MM-DD): "); scanf("%s", s1);
+            if (!isValidDateFormat(s1)) printf("The format you have entered is wrong. Please use YYYY-MM-DD.\n");
+         } while (!isValidDateFormat(s1));
+
+         sscanf(s1, "%d-%d-%d", &entry.Date.Year, &entry.Date.Month, &entry.Date.Day);
+         return entry;
+        }
+
+int Read_ID() {// read number between make sure it is in the entries
+
+    int id = ReadNumberBetween(1, IDCount,"Enter the ID of the Entry You Want To Edit? " , "The ID does not exist, Enter Another ID :-) ");
+    return id;
+    }
+
+void EditEntry() {
+
+    int id = Read_ID();
+
+    printf("Enter The Entry New Data: \n");
+    stEntry newEntry = ReadEntry();
+
+    int found = 0;// for print if not found(if found = 0)
+    newEntry.ID=id;// make new entry = the already entered id
+
+    for (int i = 0; i < entryCount; ++i)
+        if (vEntries[i].ID == id) {
+
+            vEntries[i] = newEntry;
+            found = 1;
+            printf("Entry with ID %d has been updated.\n", id);
+            break;
+        }
+
+    if (!found)
+        printf("Entry with ID %d not found.\n", id);
+
+}
+
+// print the line of one record
+void PrintEntryLine(const stEntry *entry) {
+            printf("%-10d%-15s%-15s%.2f %s      %04d-%02d-%02d\n", entry->ID, entry->Type == Income ? "Income" : "Expense", entry->Category, entry->Amount, Currency, entry->Date.Year, entry->Date.Month, entry->Date.Day);
+
+    }
+
+void Print_All_Entries(const stEntry *EntriesWithinPeriod, int numEntries) {
+    //print the line of all records within the sent array
+
+    if(numEntries==0){
+        printf("%s","There Is No Entries");
+        return;
+    }
+
+    printf("%-10s%-15s%-20s%-15s%-15s\n", "Entry ID", "Type", "Category", "Amount", "Date");
+    printf("------------------------------------------------------------------------------\n");
+
+    for (int i = 0; i < numEntries; i++)
+        PrintEntryLine(&EntriesWithinPeriod[i]);
+}
+
+void DisplayCategoryOptions() {
+
+    printf("%30s1. Show Categories\n%30s2. Add Category\n%30s3. Edit Category\n%30s4. Delete Category\n%30s5. Back To Main Menu\n", "", "", "", "", "");
+}
+
+void BackToCategoryMenu() {
+
+    printf("\nPress Enter To Go Back To Category Menu... ");
+    while(getchar()!='\n');// won't end till enter new line by pressing enter
+    getchar();
+    ShowCategoryMenu();
+    }
+
+void toUpperCase(char* str) {
+
+     for (int i = 0; str[i] != '\0'; i++)
+        str[i] = toupper(str[i]);
+ }  //convert the string to upper case
+
+int UpdateCategory(const char* Category, const char* NewValue) {
+
+    toUpperCase((char*)Category);//make it upper case by taking the address of value
+    toUpperCase((char*)NewValue);
+
+    for (int i = 0; i < CategoryArraySize; i++)
+
+        if (strcmp(Category, CategoryArray[i]) == 0) {
+
+            strncpy(CategoryArray[i], NewValue, 49);
+            CategoryArray[i][49] = '\0';
+            return 1;
+        }
+        return 0;
+    }
+
+void EditCategory(char * oldCategory) {
+
+    char * newCategory = ReadCategory("Enter the new category name: ");   // if category added successfully will print message says that if not it print does not exits
+
+    if(UpdateCategory(oldCategory, newCategory))
+        printf("%s","The Category Edited Successfully!");
+    else
+        printf("\n%s\n","The Category Does not Exist :-(");
+}
+
+int IsCategoryExistInTheEntries(char* Category,stEntry* vEntries2, int* entryCount2) {
+
+    for(int i=0;i<entryCount2;i++)
+        if(strcmp(vEntries2[i].Category,Category)==0)
+            return 1;
+
+    return 0;
+}
+
+void ShowCategoryMenu() {
+
+     system("cls");
+
+     DrawScreenHeader("Category Menu Screen");  //draw the header which we will use along the program too much
+
+     DisplayCategoryOptions();  //display category options
+     int MenuOption = ReadNumberBetween(1, 5, "Choose Option From 1 To 5: ", "The Number does not meet an option :-(\nTry again from 1 to 5: ");
+
+     char* Category;// in case we the option is 3 or 4
+
+     if(MenuOption!=5)  //if the option = 5 then don't clear the console screen
+        system("cls");
+
+     switch (MenuOption) {
+        case Show_Categories:
+                DrawScreenHeader("Show Categories Screen");
+                PrintCategories();
+                BackToCategoryMenu();
+                break;
+         case Add_Category:
+                DrawScreenHeader("Add Category Screen");
+                AddCategory(ReadCategory("Enter Category Name: "));
+                BackToCategoryMenu();
+                break;
+         case Edit_Category:
+                DrawScreenHeader("Edit Category Screen");
+                Category=ReadCategory("Enter Old Category Name: ");
+                (!IsCategoryExistInTheEntries(Category,vEntries,entryCount))? EditCategory(Category) : printf("%s","You Can't Edit The Category Since It Is Used In At Least One Entry!!");
+                BackToCategoryMenu();
+                break;
+       case Delete_Category:
+                DrawScreenHeader("Delete Category Screen");
+                Category=ReadCategory("Enter Category Name: ");
+                (!IsCategoryExistInTheEntries(Category, vEntries, entryCount)) ? (DeleteCategory(Category) ? printf("\n%s\n", "The Category has been deleted successfully :-)") : printf("\n%s\n", "The Category Does not Exist :-(")) : printf("%s", "You Can't Edit The Category Since It Is Used In At Least One Entry!!");
+                BackToCategoryMenu();
+                break;
+       case Back_To_Main_Menu:
+                BackToMainMenu();
+                break;
+        }
+}
+
+// return category summary for the sent category in the sent array by making sure across all lines it sum the amount if the lines = the category name
+stCategorySummary GetCategorySummary(const char* nCategory, stEntry* vTheEntries2, int entryCount2) {
+
+    stCategorySummary summary;
+    summary.Amount=0;   //making it = 0 to be able to sum over the initialized value
+    for(int i=0;i<entryCount2;i++){
+
+        if(strcmp(vTheEntries2[i].Category,nCategory)==0)
+            summary.Amount+=vTheEntries2[i].Amount;
+    }
+    summary.Category = nCategory;
+    return summary;
+}
+
+void GetAllCategoriesSummary(stEntry* vEntries2, int entryCount2, stCategorySummary* TheArray, int* Size){
+
+    for(int i=0;i<CategoryArraySize;i++){
+
+        TheArray[*Size]=GetCategorySummary(CategoryArray[i], vEntries2, entryCount2);
+        (*Size)++;
+    }
+}
+        //check if it exist in the categories array that is sent as parameter
+int IsExist(const char* category, const char categories[][MAX_CATEGORY_NAME], int size) {
+
+    for (int i = 0; i < size; i++) {
+
+        if (strcmp(category, categories[i]) == 0)
+            return 1;
+
+        }
+        return 0;
+}
+        // get the most entry that its type is expense
+stCategorySummary GetMostExpense(stEntry* vEntries2, int entryCount2) {
+
+    char categories[100][MAX_CATEGORY_NAME];
+    int size = 0;
+
+    for (int i = 0; i < entryCount2; i++)
+        if (vEntries2[i].Type == 2 && !IsExist(vEntries2[i].Category, (const char**)categories, size))
+            strcpy(categories[size++], vEntries2[i].Category);
+
+    stCategorySummary largestCategory;
+    largestCategory.Amount = 0.0;
+
+    for (int i = 0; i < size; i++) {
+
+        stCategorySummary category = GetCategorySummary(categories[i], vEntries2, entryCount2);
+
+        if (largestCategory.Amount < category.Amount)
+            largestCategory = category;
+        }
+    return largestCategory;
+}
+
+void ViewSummaryScreen(stEntry* vEntries2, int entryCount2) {
+
+    printf("%-20s %-15.2f\n%-20s %-15.2f\n\n", "\nThe Total Sum Of All Incomes:", GetTotalOfTheType(Income,vEntries2,entryCount2), "The Total Sum Of All Expenses:", GetTotalOfTheType(Expense,vEntries2,entryCount2));
+    PrintNetBalance(vEntries2,entryCount2);
+
+    stCategorySummary TheArray[100];    //identifying array of type stCategorySummary of size 100
+    int Size = 0;
+
+    GetAllCategoriesSummary(vEntries2,entryCount2, TheArray, &Size);
+
+    if (Size > 0) {
+
+        stCategorySummary largestCategory = GetMostExpense(vEntries2,entryCount2);
+
+        printf("\n\nThe Category You Spend The Most is: %s And The Value You Spend in it is: %.2f\n\n", largestCategory.Category, largestCategory.Amount);
+        printf("%-20s%-15s\n%s\n", "Category", "Amount", "-----------------------------------");
+
+        for (int i = 0; i < Size; ++i) {
+            if(TheArray[i].Amount==0)   //we will not print it if its amount is zero
+                continue;
+
+            printf("%-20s%-15.2f\n", TheArray[i].Category, TheArray[i].Amount);
+        }   //if there is no categories it will print there is no categories
+    }
+    else
+        printf("No categories found.\n");
+    }
+
+int IsDate1BeforeDate2(const stDate *Date1, const stDate *Date2) {
+    return Date1->Year < Date2->Year
+    || (Date1->Year == Date2->Year && Date1->Month < Date2->Month)
+    || (Date1->Year == Date2->Year && Date1->Month == Date2->Month && Date1->Day < Date2->Day);
+    }
+
+int IsDate1EqualDate2(const stDate *Date1, const stDate *Date2) {
+    return (Date1->Year == Date2->Year)
+    && (Date1->Month == Date2->Month) && (Date1->Day == Date2->Day);
+    }
+
+int IsDateBetweenDate1AndDate2(const stDate *Date0, const stDate *Date1, const stDate *Date2) {
+    return (IsDate1BeforeDate2(Date1, Date0) && IsDate1BeforeDate2(Date0, Date2))
+    || IsDate1EqualDate2(Date0, Date1) || IsDate1EqualDate2(Date0, Date2);
+    }
+
+stEntry* GetAllEntriesBetweenDate1AndDate2(const stDate *Date1, const stDate *Date2, int *numEntries) {
+
+    stEntry *entriesBetween = malloc(entryCount * sizeof(stEntry));
+    *numEntries = 0;
+
+    for (int i = 0; i < entryCount; i++)
+
+        if (IsDateBetweenDate1AndDate2(&(vEntries[i].Date), Date1, Date2)) {
+
+            entriesBetween[*numEntries] = vEntries[i];
+            (*numEntries)++;
+
+        }
+    return entriesBetween;
+ }
+
+stDate ConvertDateStringTostDate(const char* s1) {
+
+    stDate Date;
+    sscanf(s1, "%d-%d-%d", &Date.Year, &Date.Month, &Date.Day);
+    return Date;
+}
+
+char* Read_Date(const char *message) {
+
+    char *s1 = (char *)malloc(15 * sizeof(char));
+
+    if (s1 == NULL) {
+        printf("Memory allocation failed\n");
+        exit(1);
+    }
+    printf("%s", message);
+    scanf("%10s", s1);
+
+    while (!isValidDateFormat(s1)) {
+
+        printf("The Date You Have Entered Is Wrong \nEnter In This Format YYYY-MM-DD: ");
+        scanf("%10s", s1);
+
+    }
+    return s1;
+}
+
+// making view summary according to the entries in the defined period
+void TimeBasedReport() {
+
+    stDate Date1 = ConvertDateStringTostDate((Read_Date("Enter The Start Date Of The Period:\n")));
+    stDate Date2 = ConvertDateStringTostDate((Read_Date("Enter The End Date Of The Period:\n")));
+
+    int numEntries = 0;
+    stEntry* EntriesWithinPeriod = GetAllEntriesBetweenDate1AndDate2(&Date1, &Date2, &numEntries);
+
+    Print_All_Entries(EntriesWithinPeriod, numEntries);
+
+    // if the dynamic array is not empty then will view summary else it will do
+    // nothing by returning empty string which will not be used
+    if(numEntries>0)
+        ViewSummaryScreen(EntriesWithinPeriod,numEntries);
+
+    free(EntriesWithinPeriod);
+}
+
+void ShowMainMenuOptions() {
+
+    system("cls");  //clear the console screen
+
+    DrawScreenHeader("Main Menu Options");
+
+    DisplayMainMenuOptions();   //function for print options
+    int MenuOption = ReadNumberBetween(1, 10, "Choose Option From 1 To 10: ", "The Number does not meet an option :-(\n try again from 1 to 10: ");
+
+    if(MenuOption!=10)  //in the last option we will exit the program and we don't want to clear the console screen
+        system("cls");
+
+    switch (MenuOption) {
+        case 1:
+            DrawScreenHeader("Read File (DB) Screen");
+            ReadDBPath();
+            BackToMainMenu();
+            break;
+        case 2:
+            DrawScreenHeader("Show Entries Screen");
+            Print_All_Entries(vEntries,entryCount);
+            BackToMainMenu();
+            break;
+        case 3:
+            DrawScreenHeader("Add Entry Screen");
+            AddEntry(ReadEntry());
+            BackToMainMenu();//after finishing back to this menu
+            break;
+        case 4:
+            DrawScreenHeader("Edit Entry Screen");
+            EditEntry();
+            BackToMainMenu();
+            break;
+        case 5:
+            DrawScreenHeader("Delete Entry Screen");
+            printf("Enter ID to delete: ");
+            DeleteEntry(ReadNumber("Invalid ID Try Again :-("));
+            BackToMainMenu();
+            break;
+        case 6:
+            DrawScreenHeader("Category Menu Screen");
+            ShowCategoryMenu();//take us to new menu
+            BackToMainMenu();
+            break;
+        case 7:
+            DrawScreenHeader("View Summary Screen");
+            ViewSummaryScreen(vEntries, entryCount);
+            BackToMainMenu();
+            break;
+        case 8:
+            DrawScreenHeader("Time Based Report Screen");
+            TimeBasedReport();//call time based report function
+            BackToMainMenu();
+            break;
+        case 9:
+            DrawScreenHeader("Save File(DB) Screen");
+            Save();
+            printf("The DB has been saved successfully :-)\n");
+            BackToMainMenu();
+            break;
+        case 10:
+            Save();//we will save the program by default when choose exit
+            exit(0);
+        }
+}
+
+int main() {
+
+    ReadDBPath();
+
+    ShowMainMenuOptions();
+    return 0;
+}
